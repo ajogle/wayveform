@@ -1,0 +1,74 @@
+{
+  "name": "wayveform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local music ownership manager",
+  "author": "Wayveform Contributors",
+  "license": "MIT",
+  "desktopName": "Wayveform",
+  "main": "dist/electron/main.js",
+  "scripts": {
+    "build": "npm run build:main && npm run build:renderer",
+    "build:main": "tsc -p tsconfig.electron.json",
+    "build:renderer": "vite build",
+    "start": "npm run build && electron .",
+    "test": "vitest run --config vitest.config.mjs",
+    "typecheck": "tsc -p tsconfig.electron.json --noEmit && tsc -p tsconfig.renderer.json --noEmit"
+  },
+  "dependencies": {
+    "better-sqlite3": "13.0.3",
+    "music-metadata": "11.15.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "yauzl": "3.4.0"
+  },
+  "devDependencies": {
+    "@bazel/bazelisk": "^1.28.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/yauzl": "3.4.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "electron": "44.4.1",
+    "electron-builder": "26.15.3",
+    "fflate": "0.8.3",
+    "typescript": "^6.0.2",
+    "vite": "8.3.0",
+    "vitest": "5.0.1"
+  },
+  "build": {
+    "appId": "org.wayveform.desktop",
+    "productName": "Wayveform",
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "LICENSE"
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "npmRebuild": true,
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ]
+    },
+    "linux": {
+      "category": "AudioVideo",
+      "syncDesktopName": true,
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    }
+  }
+}

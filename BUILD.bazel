@@ -1,0 +1,116 @@
+load("@npm//:defs.bzl", "npm_link_all_packages")
+load("@npm//:typescript/package_json.bzl", tsc_bin = "bin")
+load("@npm//:vite/package_json.bzl", vite_bin = "bin")
+load("@npm//:vitest/package_json.bzl", vitest_bin = "bin")
+load("//tools:cross_inputs.bzl", "cross_inputs")
+load("//tools:portable_bundle.bzl", "portable_bundle")
+
+npm_link_all_packages()
+
+tsc_bin.tsc(
+    name = "electron_js",
+    srcs = glob([
+        "src/electron/**/*.ts",
+        "src/core/**/*.ts",
+        "src/shared/**/*.ts",
+    ], exclude = ["src/**/*.test.ts"]),
+    data = [
+        "tsconfig.electron.json",
+        ":node_modules/@types/better-sqlite3",
+        ":node_modules/@types/node",
+        ":node_modules/@types/yauzl",
+        ":node_modules/better-sqlite3",
+        ":node_modules/electron",
+        ":node_modules/music-metadata",
+        ":node_modules/yauzl",
+    ],
+    fixed_args = ["-p", "tsconfig.electron.json"],
+    out_dirs = ["dist/electron", "dist/core", "dist/shared"],
+)
+
+vite_bin.vite(
+    name = "renderer_js",
+    srcs = glob(["src/renderer/**", "src/shared/**/*.ts"]),
+    data = [
+        "vite.config.mjs",
+        ":node_modules/@vitejs/plugin-react",
+        ":node_modules/react",
+        ":node_modules/react-dom",
+        ":node_modules/vite",
+    ],
+    fixed_args = ["build", "--config", "vite.config.mjs"],
+    out_dirs = ["dist/renderer"],
+    execution_requirements = {"no-sandbox": "1"},
+)
+
+filegroup(
+    name = "app_js",
+    srcs = [":electron_js", ":renderer_js"],
+)
+
+filegroup(
+    name = "runtime_node_modules",
+    srcs = [
+        ":node_modules/better-sqlite3",
+        ":node_modules/music-metadata",
+        ":node_modules/yauzl",
+    ],
+)
+
+vitest_bin.vitest_test(
+    name = "unit_tests",
+    data = glob([
+        "src/core/**/*.ts",
+        "src/shared/**/*.ts",
+    ]) + [
+        "vitest.config.mjs",
+        ":node_modules/better-sqlite3",
+        ":node_modules/fflate",
+        ":node_modules/music-metadata",
+        ":node_modules/vitest",
+        ":node_modules/yauzl",
+    ],
+    args = ["run", "--config", "vitest.config.mjs"],
+)
+
+genrule(
+    name = "sqlite_addon",
+    srcs = [":node_modules/better-sqlite3/dir"],
+    outs = ["better_sqlite3.node"],
+    cmd = "cp $(location :node_modules/better-sqlite3/dir)/prebuilds/" + select({
+        "//platforms:is_linux_x64": "linux-x64.node",
+        "//platforms:is_linux_arm64": "linux-arm64.node",
+        "//platforms:is_macos_x64": "darwin-x64.node",
+        "//platforms:is_macos_arm64": "darwin-arm64.node",
+        "//platforms:is_windows_x64": "win32-x64.node",
+        "//platforms:is_windows_arm64": "win32-arm64.node",
+    }, no_match_error = "Wayveform supports Linux, macOS, and Windows on x64 or arm64") + " $@",
+)
+
+filegroup(
+    name = "electron_runtime_zip",
+    srcs = select({
+        "//platforms:is_linux_x64": ["@electron_linux_x64//file"],
+        "//platforms:is_linux_arm64": ["@electron_linux_arm64//file"],
+        "//platforms:is_macos_x64": ["@electron_macos_x64//file"],
+        "//platforms:is_macos_arm64": ["@electron_macos_arm64//file"],
+        "//platforms:is_windows_x64": ["@electron_windows_x64//file"],
+        "//platforms:is_windows_arm64": ["@electron_windows_arm64//file"],
+    }, no_match_error = "Wayveform supports Linux, macOS, and Windows on x64 or arm64"),
+)
+
+cross_inputs(
+    name = "cross_inputs",
+    app_js = ":app_js",
+    runtime_zip = ":electron_runtime_zip",
+    sqlite_addon = ":sqlite_addon",
+    package_json = "package.json",
+    license = "LICENSE",
+)
+
+portable_bundle(
+    name = "portable_bundle",
+    cross_inputs = ":cross_inputs",
+    runtime_node_modules = ":runtime_node_modules",
+    tool = "//tools:portable_bundle_tool",
+)

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+release/
+*.log
+# Bazel output directories and convenience symlinks
+/bazel-*
+MODULE.bazel.lock
+IMPLEMENTATION*

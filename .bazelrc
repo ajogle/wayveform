@@ -1,0 +1,8 @@
+common --repo_env=DO_NOT_TRACK=1
+
+build:linux_x64 --platforms=//platforms:linux_x64
+build:linux_arm64 --platforms=//platforms:linux_arm64
+build:macos_x64 --platforms=//platforms:macos_x64
+build:macos_arm64 --platforms=//platforms:macos_arm64
+build:windows_x64 --platforms=//platforms:windows_x64
+build:windows_arm64 --platforms=//platforms:windows_arm64

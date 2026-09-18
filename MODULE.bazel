@@ -1,0 +1,57 @@
+module(name = "wayveform")
+
+bazel_dep(name = "aspect_rules_js", version = "3.4.0")
+bazel_dep(name = "rules_nodejs", version = "6.7.3")
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "rules_python", version = "2.3.3")
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.defaults(python_version = "3.12")
+python.toolchain(python_version = "3.12")
+
+node = use_extension("@rules_nodejs//nodejs:extensions.bzl", "node")
+node.toolchain(node_version = "22.14.0")
+use_repo(node, "nodejs_toolchains")
+
+npm = use_extension("@aspect_rules_js//npm:extensions.bzl", "npm")
+npm.npm_translate_lock(
+    name = "npm",
+    pnpm_lock = "//:pnpm-lock.yaml",
+    bins = {
+        "typescript": ["tsc=./bin/tsc"],
+    },
+)
+use_repo(npm, "npm")
+
+http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+
+http_file(
+    name = "electron_linux_x64",
+    urls = ["https://github.com/electron/electron/releases/download/v44.4.1/electron-v44.4.1-linux-x64.zip"],
+    sha256 = "4a5cb9b3c84eefc3e68df178fbb31bd7c5c9a07fa19f173c84ea058cbe8190aa",
+)
+http_file(
+    name = "electron_linux_arm64",
+    urls = ["https://github.com/electron/electron/releases/download/v44.4.1/electron-v44.4.1-linux-arm64.zip"],
+    sha256 = "5b8ee1eb6a1b91710635de80958997045d351648790ca0cc15a0ef4831c7af7e",
+)
+http_file(
+    name = "electron_macos_x64",
+    urls = ["https://github.com/electron/electron/releases/download/v44.4.1/electron-v44.4.1-darwin-x64.zip"],
+    sha256 = "fe9a87d57deab10bbdb84fc23cc0d639df1be43ad4b83d3ef5885938cd20ec5d",
+)
+http_file(
+    name = "electron_macos_arm64",
+    urls = ["https://github.com/electron/electron/releases/download/v44.4.1/electron-v44.4.1-darwin-arm64.zip"],
+    sha256 = "9ff18dff15a0661d7b6c0bb5965f450006c7bd15db0a3b2184a6f7bf13410a7e",
+)
+http_file(
+    name = "electron_windows_x64",
+    urls = ["https://github.com/electron/electron/releases/download/v44.4.1/electron-v44.4.1-win32-x64.zip"],
+    sha256 = "34bc07977d6c43b6514b956a5f2e3292255daa3838a49e6110f3fe19ffafb83f",
+)
+http_file(
+    name = "electron_windows_arm64",
+    urls = ["https://github.com/electron/electron/releases/download/v44.4.1/electron-v44.4.1-win32-arm64.zip"],
+    sha256 = "a1a5b3a754b42b32b7aa04181f66686a3be11cdc41a10d04e5977ab0be425fb1",
+)

@@ -77,6 +77,18 @@ export function parseAppleResponse(raw: unknown, item: SourceItem, country = 'US
   return candidates;
 }
 
+export function clearAutoMatch(item: SourceItem, candidates: CatalogCandidate[]): CatalogCandidate | null {
+  const matches = candidates.filter(candidate => {
+    if (candidate.matchLevel !== 'strong') return false;
+    if (normalizeMusicText(candidate.artist) !== normalizeMusicText(item.artist)
+      || normalizeMusicText(candidate.title) !== normalizeMusicText(item.title)) return false;
+    if (item.album && (!candidate.album
+      || normalizeMusicText(candidate.album) !== normalizeMusicText(item.album))) return false;
+    return true;
+  });
+  return matches.length === 1 ? matches[0] : null;
+}
+
 export function appleSearchUrl(item: SourceItem, country = 'US'): string {
   const url = new URL('https://itunes.apple.com/search');
   url.searchParams.set('term', `${item.artist} ${item.title}`);

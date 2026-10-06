@@ -13,6 +13,7 @@ export interface SourceItem {
   matchedFileName?: string | null;
   matchMethod?: 'tag_review' | 'manual' | null;
   catalogStatus?: CatalogStatus | null;
+  catalogAccepted?: boolean;
   purchaseStatus?: 'opened' | 'userConfirmed' | null;
 }
 
@@ -115,6 +116,9 @@ export interface DiscoveryProgress {
   completed: number;
   failed: number;
   total: number;
+  selected: number;
+  needsReview: number;
+  noResults: number;
 }
 
 export interface PurchasePlanView {

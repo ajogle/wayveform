@@ -12,7 +12,7 @@ import { safeMusicSegment } from '../core/library-files';
 import { extractMediaArchive } from '../core/media-archive';
 import { planPurchases, type PurchaseOffer, type WantedRecording } from '../core/purchase-planner';
 import { normalizeMusicText } from '../core/file-matcher';
-import { freshCatalogObservation, searchApple } from '../core/providers/apple';
+import { clearAutoMatch, freshCatalogObservation, searchApple } from '../core/providers/apple';
 import type { CatalogCandidate, CatalogSearch, CatalogStatus, ColumnMapping, DiscoveryProgress, FileAsset, FileInventory, ImportBatch, ImportError, ImportResult, InventorySnapshot, OrganizeResult, PlaylistExportResult, PurchasePlanView, ScanResult, SourceItem } from '../shared/types';
 
 if (!parentPort) throw new Error('Inventory worker requires a parent.');
@@ -165,6 +165,8 @@ function getItems(batchId?: string | null, offset?: number, limit?: number, coll
   const rows = db.prepare(`SELECT i.id, i.batch_id AS batchId, i.source_order AS sourceOrder,
     i.artist, i.title, i.album, i.duration_ms AS durationMs, i.isrc,
     i.source_collection AS sourceCollection, i.original_values AS originalValues,
+    EXISTS(SELECT 1 FROM catalog_candidates accepted
+      WHERE accepted.item_id = i.id AND accepted.accepted = 1) AS catalogAccepted,
     m.file_asset_id AS matchedFileId, f.file_name AS matchedFileName,
     m.method AS matchMethod,
     c.status AS catalogStatus, p.status AS purchaseStatus FROM source_items i
@@ -174,8 +176,10 @@ function getItems(batchId?: string | null, offset?: number, limit?: number, coll
     LEFT JOIN catalog_searches c ON c.item_id = i.id
     LEFT JOIN purchase_records p ON p.item_id = i.id
     ${where}
-    ORDER BY b.imported_at DESC, i.source_order ASC ${page}`).all(...arguments_) as (Omit<SourceItem, 'originalValues'> & { originalValues: string })[];
-  return rows.map(item => ({ ...item, originalValues: JSON.parse(item.originalValues) }));
+    ORDER BY b.imported_at DESC, i.source_order ASC ${page}`).all(...arguments_) as
+      (Omit<SourceItem, 'originalValues' | 'catalogAccepted'> & { originalValues: string; catalogAccepted: number })[];
+  return rows.map(item => ({ ...item, catalogAccepted: !!item.catalogAccepted,
+    originalValues: JSON.parse(item.originalValues) }));
 }
 
 function getItemById(itemId: string): SourceItem | null {
@@ -623,6 +627,17 @@ function acceptCatalogCandidate(itemId: string, candidateId: string): void {
   })();
 }
 
+function autoAcceptClearCandidate(itemId: string, catalog = getCatalog(itemId)): boolean {
+  if (catalog.candidates.some(candidate => candidate.accepted)) return false;
+  const item = getItemById(itemId);
+  if (!item) return false;
+  const candidate = clearAutoMatch(item, catalog.candidates);
+  if (!candidate) return false;
+  db.prepare('UPDATE catalog_candidates SET accepted = 1 WHERE id = ? AND item_id = ?')
+    .run(candidate.id, itemId);
+  return true;
+}
+
 function storeCandidateUrl(candidateId: string): string {
   const row = db.prepare(`SELECT c.store_url AS storeUrl, s.fetched_at AS fetchedAt
     FROM catalog_candidates c JOIN catalog_searches s ON s.item_id = c.item_id
@@ -682,8 +697,19 @@ function getDiscoveryProgress(): DiscoveryProgress {
   const queued = count('pending') + count('running');
   const completed = count('completed');
   const failed = count('failed');
+  const outcome = db.prepare(`SELECT
+    SUM(CASE WHEN EXISTS(SELECT 1 FROM catalog_candidates candidate
+      WHERE candidate.item_id = job.item_id AND candidate.accepted = 1) THEN 1 ELSE 0 END) AS selected,
+    SUM(CASE WHEN job.status = 'completed' AND search.status = 'ready'
+      AND NOT EXISTS(SELECT 1 FROM catalog_candidates candidate
+        WHERE candidate.item_id = job.item_id AND candidate.accepted = 1) THEN 1 ELSE 0 END) AS needsReview,
+    SUM(CASE WHEN job.status = 'completed' AND search.status = 'noCandidates' THEN 1 ELSE 0 END) AS noResults
+    FROM discovery_jobs job LEFT JOIN catalog_searches search ON search.item_id = job.item_id`)
+    .get() as { selected: number | null; needsReview: number | null; noResults: number | null };
   const active = !!(db.prepare('SELECT active FROM discovery_control WHERE id = 1').get() as { active: number }).active;
-  return { active, queued, completed, failed, total: queued + completed + failed };
+  return { active, queued, completed, failed, total: queued + completed + failed,
+    selected: outcome.selected ?? 0, needsReview: outcome.needsReview ?? 0,
+    noResults: outcome.noResults ?? 0 };
 }
 
 let discoveryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -713,6 +739,7 @@ async function pumpDiscovery() {
     try {
       const result = await searchCatalog(next.itemId);
       if (result.status === 'ready' || result.status === 'noCandidates') {
+        if (result.status === 'ready') autoAcceptClearCandidate(next.itemId, result);
         db.prepare("UPDATE discovery_jobs SET status = 'completed' WHERE item_id = ?").run(next.itemId);
       } else if (result.status === 'accessDenied' || next.attempts >= 4) {
         db.prepare("UPDATE discovery_jobs SET status = 'failed' WHERE item_id = ?").run(next.itemId);
@@ -741,11 +768,18 @@ function startDiscovery(batchId?: string | null): DiscoveryProgress {
     WHERE status = 'failed' AND item_id IN (SELECT id FROM source_items ${batchId ? 'WHERE batch_id = ?' : ''})`)
     .run(...(batchId ? [batchId] : []));
   db.prepare(`INSERT OR IGNORE INTO discovery_jobs (item_id, status, attempts, next_retry_ms)
-    SELECT i.id, 'pending', 0, 0 FROM source_items i
+    SELECT i.id, CASE WHEN c.status IN ('ready', 'noCandidates') THEN 'completed' ELSE 'pending' END, 0, 0
+    FROM source_items i
     LEFT JOIN file_matches f ON f.source_item_id = i.id
     LEFT JOIN catalog_searches c ON c.item_id = i.id
-    WHERE f.source_item_id IS NULL AND (c.status IS NULL OR c.status NOT IN ('ready', 'noCandidates'))
+    WHERE f.source_item_id IS NULL
     ${batchId ? 'AND i.batch_id = ?' : ''}`).run(...(batchId ? [batchId] : []));
+  const ready = db.prepare(`SELECT i.id FROM source_items i
+    JOIN catalog_searches c ON c.item_id = i.id AND c.status = 'ready'
+    LEFT JOIN file_matches f ON f.source_item_id = i.id
+    WHERE f.source_item_id IS NULL ${batchId ? 'AND i.batch_id = ?' : ''}`)
+    .all(...(batchId ? [batchId] : [])) as { id: string }[];
+  for (const item of ready) autoAcceptClearCandidate(item.id);
   db.prepare('UPDATE discovery_control SET active = 1 WHERE id = 1').run();
   scheduleDiscovery();
   return getDiscoveryProgress();

@@ -76,11 +76,11 @@ function App() {
       try {
         const progress = await window.wayveform.getDiscoveryProgress();
         setDiscovery(progress);
-        await refresh(offset, selectedBatch);
+        await refresh(offset, selectedBatch, selectedCollection);
       } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not update discovery progress.'); }
     }, 4000);
     return () => window.clearInterval(timer);
-  }, [discovery?.active, offset, selectedBatch]);
+  }, [discovery?.active, offset, selectedBatch, selectedCollection]);
 
   async function importFile() {
     setBusy(true);
@@ -412,14 +412,14 @@ function App() {
           {selectedBatch && <button className="secondary" disabled={busy} onClick={() => void deleteSelectedImport()}>Delete selected import</button>}
           <div className="export-actions"><button className="secondary" disabled={busy} onClick={() => void exportFile('csv')}>Export CSV</button><button className="secondary" disabled={busy} onClick={() => void exportFile('json')}>Export JSON</button><button className="secondary" disabled={busy} onClick={() => void exportPlaylist()}>Export M3U8</button></div>
         </div>
-        <div className="discovery-panel"><div><strong>Find catalog recordings</strong><p>Apple receives artist and title queries for tracks without linked files. Searches run at a conservative pace and resume after restart. Store prices are observations, not verified download offers.</p>{discovery && discovery.total > 0 && <span>{discovery.completed} completed · {discovery.queued} queued · {discovery.failed} need attention</span>}</div><button className="secondary" onClick={() => void (discovery?.active ? pauseDiscovery() : startDiscovery())}>{discovery?.active ? 'Pause searches' : discovery?.queued ? 'Resume searches' : 'Find missing tracks'}</button></div>
+        <div className="discovery-panel"><div><strong>Automatically find recordings</strong><p>Wayveform searches Apple for tracks without local files and selects only a single clear artist, title, and album match. Ambiguous results stay for review. Searches run at a conservative pace and resume after restart.</p>{discovery && discovery.total > 0 && <span>{discovery.selected} selected · {discovery.needsReview} need review · {discovery.noResults} no results · {discovery.queued} queued · {discovery.failed} failed</span>}</div><button className="secondary" onClick={() => void (discovery?.active ? pauseDiscovery() : startDiscovery())}>{discovery?.active ? 'Pause auto-search' : discovery?.queued ? 'Resume auto-search' : 'Auto-search missing tracks'}</button></div>
         {currentBatch && <div className="batch-summary">{currentBatch.inputCount} input rows · {currentBatch.acceptedCount} accepted · {currentBatch.rejectedCount} rejected · {currentBatch.duplicateCount} repeated songs
           {batchErrors.length > 0 && <details><summary>Review {batchErrors.length} rejected rows</summary><ul>{batchErrors.map((item, index) => <li key={index}>Row {item.sourceOrder}: {item.message}</li>)}</ul></details>}
         </div>}
       </>}
       {snapshot?.items.length ? <>
         <div className="table-wrap"><table><thead><tr><th>Track</th><th>Artist</th><th>Album</th><th>Source</th><th>Purchase</th><th>Local file</th><th>Catalog</th></tr></thead><tbody>
-          {snapshot.items.map(item => <tr key={item.id}><td className="track-title">{item.title}</td><td>{item.artist}</td><td>{item.album || <span className="muted">—</span>}</td><td>{item.sourceCollection || <span className="muted">Imported list</span>}</td><td>{item.purchaseStatus === 'userConfirmed' ? <span className="matched">User confirmed</span> : item.purchaseStatus === 'opened' ? 'Store opened' : <span className="muted">None recorded</span>}</td><td>{item.matchedFileId ? <div className="linked-file"><span>{item.matchedFileName}{item.matchMethod === 'manual' ? ' (manual)' : ''}</span><button disabled={busy} onClick={() => void removeMatch(item.id)}>Unlink</button></div> : <span className="muted">Not linked</span>}</td><td><button className="table-action" onClick={() => void reviewCatalog(item)}>{item.catalogStatus === 'ready' ? 'Review results' : item.catalogStatus === 'noCandidates' ? 'No results' : item.catalogStatus && item.catalogStatus !== 'notSearched' ? 'Retry search' : 'Search'}</button></td></tr>)}
+          {snapshot.items.map(item => <tr key={item.id}><td className="track-title">{item.title}</td><td>{item.artist}</td><td>{item.album || <span className="muted">—</span>}</td><td>{item.sourceCollection || <span className="muted">Imported list</span>}</td><td>{item.purchaseStatus === 'userConfirmed' ? <span className="matched">User confirmed</span> : item.purchaseStatus === 'opened' ? 'Store opened' : <span className="muted">None recorded</span>}</td><td>{item.matchedFileId ? <div className="linked-file"><span>{item.matchedFileName}{item.matchMethod === 'manual' ? ' (manual)' : ''}</span><button disabled={busy} onClick={() => void removeMatch(item.id)}>Unlink</button></div> : <span className="muted">Not linked</span>}</td><td><button className="table-action" onClick={() => void reviewCatalog(item)}>{item.catalogAccepted ? 'Recording selected' : item.catalogStatus === 'ready' ? 'Review results' : item.catalogStatus === 'noCandidates' ? 'No results' : item.catalogStatus && item.catalogStatus !== 'notSearched' ? 'Retry search' : 'Search'}</button></td></tr>)}
         </tbody></table></div>
         <div className="pagination"><button disabled={offset === 0} onClick={() => void refresh(Math.max(0, offset - pageSize))}>Previous</button><span>{offset + 1}–{Math.min(offset + pageSize, snapshot.totalItems)} of {snapshot.totalItems}</span><button disabled={offset + pageSize >= snapshot.totalItems} onClick={() => void refresh(offset + pageSize)}>Next</button></div>
       </> : <div className="empty"><div className="empty-icon">♫</div><strong>No tracks yet</strong><p>Import a music list to see it here.</p></div>}

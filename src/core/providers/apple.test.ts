@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appleSearchUrl, freshCatalogObservation, parseAppleResponse, retryAfterMs, searchApple } from './apple';
+import { appleSearchUrl, clearAutoMatch, freshCatalogObservation, parseAppleResponse, retryAfterMs, searchApple } from './apple';
 import type { SourceItem } from '../../shared/types';
 
 const item: SourceItem = { id: 'item', batchId: 'batch', sourceOrder: 1,
@@ -32,6 +32,14 @@ describe('Apple catalog adapter', () => {
     ] }, item);
     expect(candidates).toHaveLength(1);
     expect(candidates[0].priceMinor).toBeNull();
+  });
+
+  it('auto-selects only one unambiguous strong album match', () => {
+    const candidates = parseAppleResponse({ results: [result] }, item);
+    expect(clearAutoMatch(item, candidates)?.providerTrackId).toBe('123');
+    expect(clearAutoMatch(item, [...candidates, { ...candidates[0], id: 'second', providerTrackId: '456' }])).toBeNull();
+    expect(clearAutoMatch(item, [{ ...candidates[0], album: null }])).toBeNull();
+    expect(clearAutoMatch(item, [{ ...candidates[0], matchLevel: 'review' }])).toBeNull();
   });
 
   it('distinguishes no results from provider failures', async () => {

@@ -6,3 +6,4 @@ release/
 /bazel-*
 MODULE.bazel.lock
 IMPLEMENTATION*
+my_spotify_data*

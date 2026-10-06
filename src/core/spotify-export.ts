@@ -8,6 +8,26 @@ const maxEntries = 2000;
 const maxEntryBytes = 10 * 1024 * 1024;
 const maxTotalBytes = 50 * 1024 * 1024;
 
+function localTrackFields(value: unknown): Row {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const uri = (value as Row).uri;
+  if (typeof uri !== 'string') return {};
+  const parts = uri.split(':');
+  if (parts.length !== 6 || parts[0] !== 'spotify' || parts[1] !== 'local') return {};
+  try {
+    const seconds = Number(parts[5]);
+    return {
+      artistName: decodeURIComponent(parts[2]),
+      albumName: decodeURIComponent(parts[3]),
+      trackName: decodeURIComponent(parts[4]),
+      durationMs: Number.isFinite(seconds) && seconds >= 0 ? Math.round(seconds * 1000) : undefined,
+      uri,
+    };
+  } catch {
+    return {};
+  }
+}
+
 export function spotifyRowsFromJson(fileName: string, root: unknown): Row[] {
   if (!root || typeof root !== 'object' || Array.isArray(root)) throw new Error(`${fileName} has an unexpected structure.`);
   const data = root as Row;
@@ -29,7 +49,7 @@ export function spotifyRowsFromJson(fileName: string, root: unknown): Row[] {
     for (const item of playlist.items) {
       const row = item && typeof item === 'object' && !Array.isArray(item) ? item as Row : {};
       const track = row.track && typeof row.track === 'object' && !Array.isArray(row.track) ? row.track as Row : {};
-      rows.push({ ...row, ...track, collection });
+      rows.push({ ...row, ...track, ...localTrackFields(row.localTrack), collection });
     }
   }
   return rows;
